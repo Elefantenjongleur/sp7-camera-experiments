@@ -1,0 +1,166 @@
+=== soft_simple.cpp: SP7 / AF ===
+59:		 const ControlInfoMap &lensControls,
+85:	 * SP7 continuous contrast autofocus experiment.
+87:	 * Working hypothesis for the DW9719 optical direction:
+88:	 * lower positions focus farther away, with 0 approximately
+89:	 * representing infinity; higher positions focus nearer.
+95:	 * the current focus position.
+97:	static constexpr int32_t kSp7AfInitialPosition = 288;
+98:	static constexpr int32_t kSp7AfProbeStep = 24;
+101:	 * A flat contrast curve is common at longer focus distances.
+102:	 * Do not accept the centre as a focus peak unless it exceeds
+104:	 * searching towards the far-focus end of the lens range.
+106:	static constexpr uint64_t kSp7AfCenterPeakNumerator = 102;
+107:	static constexpr uint64_t kSp7AfCenterPeakDenominator = 100;
+112:	 * accepting the best focus position.
+114:	static constexpr uint64_t kSp7AfCoarseGainNumerator = 101;
+115:	static constexpr uint64_t kSp7AfCoarseGainDenominator = 100;
+116:	static constexpr int32_t kSp7AfCoarseStep = 30;
+130:	static constexpr int32_t kSp7AfHillMinStep = 4;
+131:	static constexpr uint64_t kSp7AfHillToleranceNumerator = 995;
+132:	static constexpr uint64_t kSp7AfHillToleranceDenominator = 1000;
+133:	static constexpr unsigned int kSp7AfHillMaxReversals = 6;
+134:	static constexpr int32_t kSp7AfFineStep = 4;
+135:	static constexpr int32_t kSp7AfFineRadius = 4;
+136:	static constexpr int32_t kSp7AfMinPosition = 0;
+137:	static constexpr int32_t kSp7AfMaxPosition = 510;
+140:	 * SP7 CDAF V3 calibration:
+142:	 * The software ISP produces focus statistics only periodically.
+144:	 * use the next focus measurement. This trades some noise immunity
+145:	 * for substantially faster autofocus response.
+147:	static constexpr unsigned int kSp7AfSamplesPerPosition = 1;
+148:	static constexpr unsigned int kSp7AfProbeSamples = 2;
+149:	static constexpr unsigned int kSp7AfSettleStats = 1;
+150:	static constexpr unsigned int kSp7AfLockedSamples = 3;
+151:	static constexpr unsigned int kSp7AfDropConfirmations = 3;
+156:	 * focus peak safely passed only after contrast falls below 80%
+159:	static constexpr uint64_t kSp7AfPeakRatioNumerator = 80;
+160:	static constexpr uint64_t kSp7AfPeakRatioDenominator = 100;
+163:	 * Re-focus only after a sustained drop below 90% of the score
+164:	 * measured when focus was locked. This deliberately favours a
+167:	static constexpr uint64_t kSp7AfRelockNumerator = 90;
+168:	static constexpr uint64_t kSp7AfRelockDenominator = 100;
+197:	int32_t sp7AfAdaptiveStep_ = kSp7AfCoarseStep;
+223:			const ControlInfoMap &lensControls,
+235:	lensInfoMap_ = lensControls;
+331:	lensInfoMap_ = configInfo.lensControls;
+398:	sp7AfPosition_ = kSp7AfInitialPosition;
+399:	sp7AfBestPosition_ = kSp7AfInitialPosition;
+401:	sp7AfFineMin_ = kSp7AfInitialPosition;
+402:	sp7AfFineMax_ = kSp7AfInitialPosition;
+417:		<< "SP7 CONT AF: initialized position="
+418:		<< kSp7AfInitialPosition
+419:		<< " coarseStep=" << kSp7AfCoarseStep
+420:		<< " fineStep=" << kSp7AfFineStep
+421:		<< " range=" << kSp7AfMinPosition
+422:		<< "-" << kSp7AfMaxPosition;
+467:			<< "SP7 AF TEST: frame=" << frame
+468:			<< " focusScore=" << stats_->focusScore;
+485:	 * SP7 autofocus experiment.
+488:	 * focus metric. Otherwise AGC changes can alter the gradient
+498:		<< "SP7 AF FIXED EXP: frame=" << frame
+507:	 * SP7 continuous contrast autofocus.
+516:	 *   keep the lens stationary and monitor the focus metric. Only a
+524:			if (position < kSp7AfMinPosition)
+525:				return kSp7AfMinPosition;
+526:			if (position > kSp7AfMaxPosition)
+527:				return kSp7AfMaxPosition;
+537:			sp7AfDiscard_ = kSp7AfSettleStats;
+540:				<< "SP7 CDAF V3 CAL: move position="
+545:			setLensControls.emit(lensCtrls);
+548:		auto lockFocus = [&]() {
+558:				<< "SP7 CONT AF: LOCK position="
+564:			setLensControls.emit(lensCtrls);
+569:			sp7AfAdaptiveStep_ = kSp7AfCoarseStep;
+591:				<< "SP7 CONT AF: acquire center="
+602:					      kSp7AfFineRadius);
+605:					      kSp7AfFineRadius);
+612:				<< "SP7 CONT AF: fine range="
+626:				<< "SP7 FAST CDAF: initial acquisition position="
+627:				<< kSp7AfInitialPosition;
+629:			beginAcquisition(kSp7AfInitialPosition);
+635:				<< "SP7 CONT AF: discard position="
+637:				<< " score=" << stats_->focusScore;
+640:			sp7AfScoreSum_ += stats_->focusScore;
+643:			if (sp7AfSamples_ == kSp7AfLockedSamples) {
+645:					sp7AfScoreSum_ / kSp7AfLockedSamples;
+648:					average * kSp7AfRelockDenominator <
+649:					sp7AfLockScore_ * kSp7AfRelockNumerator;
+652:					<< "SP7 CONT AF: monitor position="
+667:				    kSp7AfDropConfirmations) {
+669:						<< "SP7 CONT AF: REFOCUS from position="
+683:					? kSp7AfProbeSamples
+684:					: kSp7AfSamplesPerPosition;
+686:			sp7AfScoreSum_ += stats_->focusScore;
+690:				<< "SP7 CONT AF: sample position="
+694:				<< " score=" << stats_->focusScore;
+701:					<< "SP7 CONT AF: result position="
+715:							kSp7AfProbeStep);
+724:							kSp7AfProbeStep));
+747:							kSp7AfProbeStep * 2);
+762:						<< "SP7 CONT AF: probes center="
+779:							kSp7AfCenterPeakDenominator >=
+781:							kSp7AfCenterPeakNumerator;
+785:							<< "SP7 CONT AF: clear center peak";
+795:						 * continue towards the far-focus end.
+803:							<< "SP7 CONT AF: flat center peak, "
+824:							kSp7AfCoarseStep);
+846:							<< "SP7 CONT AF: hill best position="
+864:								kSp7AfHillToleranceDenominator <
+866:								kSp7AfHillToleranceNumerator;
+869:						<< "SP7 CONT AF: hill point position="
+894:									kSp7AfHillMinStep ||
+896:									kSp7AfHillMaxReversals) {
+898:								<< "SP7 CONT AF: hill converged"
+921:						    kSp7AfHillMinStep)
+923:								kSp7AfHillMinStep;
+934:							<< "SP7 CONT AF: hill reverse"
+968:									kSp7AfHillMinStep ||
+970:									kSp7AfHillMaxReversals) {
+972:								<< "SP7 CONT AF: hill boundary converged";
+984:						    kSp7AfHillMinStep)
+986:								kSp7AfHillMinStep;
+997:							<< "SP7 CONT AF: hill boundary reverse"
+1009:						     kSp7AfHillMinStep))
+1024:							<< "SP7 CONT AF: fine best position="
+1032:						kSp7AfFineStep;
+1035:					    next > kSp7AfMaxPosition)
+1036:						lockFocus();
+
+=== simple.cpp: OV8865 / lens / SP7 ===
+376:	void setLensControls(const ControlList &lensControls);
+603:	 * Surface Pro 7 rear camera: temporary fixed-focus workaround.
+605:	 * The Simple pipeline currently doesn't drive the sensor's focus lens.
+606:	 * The OV8865 on the Surface Pro 7 uses a DW9719 VCM. A native
+607:	 * V4L2 focus position of 288 gives a useful general-purpose focus
+611:	 * proper autofocus/lens control is implemented in the Simple pipeline.
+613:	if (sensor_->model() == "ov8865") {
+614:		CameraLens *lens = sensor_->focusLens();
+617:			ret = lens->setFocusPosition(288);
+620:					<< "Failed to set OV8865 initial focus position";
+623:					<< "Set OV8865 initial focus position to 288";
+645:		CameraLens *focusLens = sensor_->focusLens();
+646:		const ControlInfoMap lensControls =
+647:			focusLens ? focusLens->controls() : ControlInfoMap{};
+650:						      lensControls, &controlInfo_);
+1094:void SimpleCameraData::setLensControls(const ControlList &lensControls)
+1096:	CameraLens *focusLens = sensor_->focusLens();
+1097:	if (!focusLens)
+1100:	if (!lensControls.contains(V4L2_CID_FOCUS_ABSOLUTE))
+1103:	const ControlValue &focusValue =
+1104:		lensControls.get(V4L2_CID_FOCUS_ABSOLUTE);
+1107:		<< "SP7 AF TEST: setting lens position "
+1108:		<< focusValue.get<int32_t>();
+1110:	int ret = focusLens->setFocusPosition(focusValue.get<int32_t>());
+1113:			<< "SP7 AF TEST: failed to set lens position: "
+1300:	 * Surface Pro 7 OV8865 workaround.
+1304:	 * a power cycle. 3264x1836 is known to stream reliably.
+1309:	if (data_->sensor_->model() == "ov8865") {
+1315:					<< "SP7 OV8865: forcing sensor mode 3264x1836";
+1497:	 * The OV8865 rear camera image is horizontally mirrored with the
+1501:	if (data->sensor_->model() == "ov8865")
+1697:		CameraLens *focusLens = data->sensor_->focusLens();
+1698:		if (focusLens)
+1699:			configInfo.lensControls = focusLens->controls();
+2025:		 * cycle. Temporarily exclude it while testing the OV8865 rear
+2030:				<< "SP7 rear-only test: skipping OV5693 sensor "

@@ -1,0 +1,100 @@
+# libcamera development state
+
+Repository:
+/home/joerg/Dokumente/surface-camera/libcamera
+
+HEAD:
+191e202178f02430b5942397c70d215cdd2056fa
+
+Branch:
+
+Describe:
+v0.7.2-dirty
+
+Modified files:
+ M include/libcamera/internal/software_isp/software_isp.h
+ M include/libcamera/internal/software_isp/swisp_stats.h
+ M include/libcamera/ipa/soft.mojom
+ M src/ipa/simple/soft_simple.cpp
+ M src/libcamera/pipeline/simple/simple.cpp
+ D src/libcamera/pipeline/virtual/data/virtual.yaml
+ M src/libcamera/software_isp/software_isp.cpp
+ M src/libcamera/software_isp/swstats_cpu.cpp
+?? include/libcamera/internal/software_isp/software_isp.h.before-sp7-lens-controlinfomap-v2
+?? include/libcamera/internal/software_isp/software_isp.h.before-sp7-lens-controls
+?? include/libcamera/internal/software_isp/swisp_stats.h.before-sp7-focus-score
+?? include/libcamera/ipa/soft.mojom.before-sp7-lens-config-20260920-140333
+?? include/libcamera/ipa/soft.mojom.before-sp7-lens-controlinfomap
+?? include/libcamera/ipa/soft.mojom.before-sp7-lens-controls
+?? src/ipa/simple/data/ov8865.yaml
+?? src/ipa/simple/data/ov8865.yaml.before-no-agc-test
+?? src/ipa/simple/data/ov8865.yaml.before-plain-debayer-test
+?? src/ipa/simple/data/ov8865.yaml.before-restore-agc
+?? src/ipa/simple/soft_simple.cpp.before-rollback-20260920-184714
+?? src/ipa/simple/soft_simple.cpp.before-rollback-20260920-200452
+?? src/ipa/simple/soft_simple.cpp.before-sp7-adaptive-hill-af-20260920-181542
+?? src/ipa/simple/soft_simple.cpp.before-sp7-af-fixed-exposure
+?? src/ipa/simple/soft_simple.cpp.before-sp7-autofocus-search
+?? src/ipa/simple/soft_simple.cpp.before-sp7-balanced-fast-af-20260920-175236
+?? src/ipa/simple/soft_simple.cpp.before-sp7-bidirectional-af-20260920-180016
+?? src/ipa/simple/soft_simple.cpp.before-sp7-bidirectional-af-v2-20260920-180207
+?? src/ipa/simple/soft_simple.cpp.before-sp7-bidirectional-af-v3-20260920-180349
+?? src/ipa/simple/soft_simple.cpp.before-sp7-cdaf-v2
+?? src/ipa/simple/soft_simple.cpp.before-sp7-cdaf-v3
+?? src/ipa/simple/soft_simple.cpp.before-sp7-continuous-af
+?? src/ipa/simple/soft_simple.cpp.before-sp7-daylight-exposure-test
+?? src/ipa/simple/soft_simple.cpp.before-sp7-directed-autofocus
+?? src/ipa/simple/soft_simple.cpp.before-sp7-directed-coarse-fix-20260920
+?? src/ipa/simple/soft_simple.cpp.before-sp7-far-focus-20260920-174651
+?? src/ipa/simple/soft_simple.cpp.before-sp7-fast-af-20260920-174256
+?? src/ipa/simple/soft_simple.cpp.before-sp7-fast-autofocus
+?? src/ipa/simple/soft_simple.cpp.before-sp7-fast-cdaf-20260920
+?? src/ipa/simple/soft_simple.cpp.before-sp7-fast-cdaf-enable-20260920
+?? src/ipa/simple/soft_simple.cpp.before-sp7-fast-relock-20260920-183616
+?? src/ipa/simple/soft_simple.cpp.before-sp7-focus-score
+?? src/ipa/simple/soft_simple.cpp.before-sp7-lens-config-20260920-140333
+?? src/ipa/simple/soft_simple.cpp.before-sp7-lens-controlinfomap
+?? src/ipa/simple/soft_simple.cpp.before-sp7-lens-controls
+?? src/ipa/simple/soft_simple.cpp.before-sp7-lock-baseline-20260920-184128
+?? src/ipa/simple/soft_simple.cpp.before-sp7-no-early-focus-accept-20260920-182921
+?? src/ipa/simple/soft_simple.cpp.before-sp7-no-early-focus-accept-v2-20260920-183119
+?? src/ipa/simple/soft_simple.cpp.before-sp7-peak80-20260920-140914
+?? src/ipa/simple/soft_simple.cpp.before-sp7-relock90-20260920-142859
+?? src/ipa/simple/soft_simple.cpp.before-sp7-relock995-20260920-143748
+?? src/ipa/simple/soft_simple.cpp.before-sp7-remove-far-bias-20260920-182223
+?? src/ipa/simple/soft_simple.cpp.before-sp7-remove-far-bias-v2-20260920-182315
+?? src/ipa/simple/soft_simple.cpp.before-sp7-two-stage-af
+?? src/libcamera/pipeline/simple/simple.cpp.before-remove-sp7-default-mirror
+?? src/libcamera/pipeline/simple/simple.cpp.before-sp7-default-mirror
+?? src/libcamera/pipeline/simple/simple.cpp.before-sp7-fixed-focus
+?? src/libcamera/pipeline/simple/simple.cpp.before-sp7-lens-config-20260920-140333
+?? src/libcamera/pipeline/simple/simple.cpp.before-sp7-lens-controlinfomap-v2
+?? src/libcamera/pipeline/simple/simple.cpp.before-sp7-lens-controls
+?? src/libcamera/pipeline/simple/simple.cpp.before-sp7-ov8865-3264x1836-workaround
+?? src/libcamera/pipeline/simple/simple.cpp.before-sp7-rear-only
+?? src/libcamera/pipeline/simple/simple.cpp.without-default-mirror
+?? src/libcamera/pipeline/virtual/data/virtual.yaml.before-sp7-rear-only
+?? src/libcamera/pipeline/virtual/data/virtual.yaml.sp7-disabled
+?? src/libcamera/software_isp/debayer_cpu.cpp.before-sp7-global-gain-test
+?? src/libcamera/software_isp/software_isp.cpp.before-sp7-lens-controlinfomap
+?? src/libcamera/software_isp/software_isp.cpp.before-sp7-lens-controlinfomap-v2
+?? src/libcamera/software_isp/software_isp.cpp.before-sp7-lens-controls
+?? src/libcamera/software_isp/swstats_cpu.cpp.before-sp7-focus-score
+
+Relevant local paths:
+  src/ipa/simple/soft_simple.cpp
+  src/libcamera/pipeline/simple/simple.cpp
+  src/ipa/simple/data/ov8865.yaml
+
+Current experimental features:
+  - OV8865 rear-camera SimplePipeline path
+  - stable 3264x1836 sensor mode
+  - DW9719 lens control through libcamera/IPA
+  - experimental contrast-detection autofocus
+  - native PipeWire/WirePlumber integration
+
+Known current limitations:
+  - AF is still experimental
+  - AE/AGC and AWB/colour tuning are unfinished
+  - front OV5693 is not currently part of this development path
+  - IR OV7251 is not currently a priority

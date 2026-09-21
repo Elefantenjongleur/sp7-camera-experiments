@@ -1,0 +1,1194 @@
+diff --git a/include/libcamera/internal/software_isp/software_isp.h b/include/libcamera/internal/software_isp/software_isp.h
+index 4f72dce9b..0102cc308 100644
+--- a/include/libcamera/internal/software_isp/software_isp.h
++++ b/include/libcamera/internal/software_isp/software_isp.h
+@@ -48,6 +48,7 @@ class SoftwareIsp : public Object
+ {
+ public:
+ 	SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
++		    const ControlInfoMap &lensControls,
+ 		    ControlInfoMap *ipaControls);
+ 	~SoftwareIsp();
+ 
+@@ -87,10 +88,12 @@ public:
+ 	Signal<uint32_t, uint32_t> ispStatsReady;
+ 	Signal<uint32_t, const ControlList &> metadataReady;
+ 	Signal<const ControlList &> setSensorControls;
++	Signal<const ControlList &> setLensControls;
+ 
+ private:
+ 	void saveIspParams();
+ 	void setSensorCtrls(const ControlList &sensorControls);
++	void setLensCtrls(const ControlList &lensControls);
+ 	void statsReady(uint32_t frame, uint32_t bufferId);
+ 	void inputReady(FrameBuffer *input);
+ 	void outputReady(FrameBuffer *output);
+diff --git a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
+index d9d0d9be8..db3208abf 100644
+--- a/include/libcamera/internal/software_isp/swisp_stats.h
++++ b/include/libcamera/internal/software_isp/swisp_stats.h
+@@ -31,6 +31,16 @@ struct SwIspStats {
+ 	 * \brief Sums of colour channels of all the sampled pixels
+ 	 */
+ 	RGB<uint64_t> sum_;
++
++	/*
++	 * SP7 autofocus experiment.
++	 *
++	 * Sum of horizontal absolute differences between sampled green
++	 * values. A larger value should indicate more high-frequency
++	 * image detail and therefore better focus.
++	 */
++	uint64_t focusScore;
++
+ 	/**
+ 	 * \brief Number of bins in the yHistogram
+ 	 */
+diff --git a/include/libcamera/ipa/soft.mojom b/include/libcamera/ipa/soft.mojom
+index 77328c5fd..bd6775237 100644
+--- a/include/libcamera/ipa/soft.mojom
++++ b/include/libcamera/ipa/soft.mojom
+@@ -10,6 +10,7 @@ import "include/libcamera/ipa/core.mojom";
+ 
+ struct IPAConfigInfo {
+ 	libcamera.ControlInfoMap sensorControls;
++	libcamera.ControlInfoMap lensControls;
+ };
+ 
+ interface IPASoftInterface {
+@@ -17,7 +18,8 @@ interface IPASoftInterface {
+ 	     libcamera.SharedFD fdStats,
+ 	     libcamera.SharedFD fdParams,
+ 	     libcamera.IPACameraSensorInfo sensorInfo,
+-	     libcamera.ControlInfoMap sensorControls)
++	     libcamera.ControlInfoMap sensorControls,
++	     libcamera.ControlInfoMap lensControls)
+ 		=> (int32 ret, libcamera.ControlInfoMap ipaControls, bool ccmEnabled);
+ 	start() => (int32 ret);
+ 	stop();
+@@ -33,6 +35,7 @@ interface IPASoftInterface {
+ 
+ interface IPASoftEventInterface {
+ 	setSensorControls(libcamera.ControlList sensorControls);
++	setLensControls(libcamera.ControlList lensControls);
+ 	setIspParams();
+ 	metadataReady(uint32 frame, libcamera.ControlList metadata);
+ };
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 629e1a32d..63f5d5563 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -56,6 +56,7 @@ public:
+ 		 const SharedFD &fdParams,
+ 		 const IPACameraSensorInfo &sensorInfo,
+ 		 const ControlInfoMap &sensorControls,
++		 const ControlInfoMap &lensControls,
+ 		 ControlInfoMap *ipaControls,
+ 		 bool *ccmEnabled) override;
+ 	int configure(const IPAConfigInfo &configInfo) override;
+@@ -78,6 +79,129 @@ private:
+ 	SwIspStats *stats_;
+ 	std::unique_ptr<CameraSensorHelper> camHelper_;
+ 	ControlInfoMap sensorInfoMap_;
++	ControlInfoMap lensInfoMap_;
++
++	/*
++	 * SP7 continuous contrast autofocus experiment.
++	 *
++	 * Working hypothesis for the DW9719 optical direction:
++	 * lower positions focus farther away, with 0 approximately
++	 * representing infinity; higher positions focus nearer.
++	 *
++	 * The complete V4L2 range 0..1023 is available. Acquisition
++	 * searches in coarse steps, a fine pass refines the peak, and
++	 * the locked state monitors sharpness without moving the lens.
++	 * A sustained sharpness loss triggers a new acquisition around
++	 * the current focus position.
++	 */
++	static constexpr int32_t kSp7AfInitialPosition = 288;
++	static constexpr int32_t kSp7AfProbeStep = 24;
++
++	/*
++	 * A flat contrast curve is common at longer focus distances.
++	 * Do not accept the centre as a focus peak unless it exceeds
++	 * the better side probe by at least 2%. Otherwise continue
++	 * searching towards the far-focus end of the lens range.
++	 */
++	static constexpr uint64_t kSp7AfCenterPeakNumerator = 102;
++	static constexpr uint64_t kSp7AfCenterPeakDenominator = 100;
++
++	/*
++	 * If the first coarse direction improves contrast by less
++	 * than one percent, search the opposite side once before
++	 * accepting the best focus position.
++	 */
++	static constexpr uint64_t kSp7AfCoarseGainNumerator = 101;
++	static constexpr uint64_t kSp7AfCoarseGainDenominator = 100;
++	static constexpr int32_t kSp7AfCoarseStep = 30;
++
++	/*
++	 * Adaptive contrast hill climbing:
++	 *
++	 * Start with the normal coarse step. Whenever contrast has
++	 * clearly fallen below the best value, reverse direction and
++	 * halve the step size:
++	 *
++	 *     30 -> 15 -> 8 -> 4
++	 *
++	 * A 0.5% tolerance prevents tiny statistical fluctuations from
++	 * causing needless direction changes.
++	 */
++	static constexpr int32_t kSp7AfHillMinStep = 4;
++	static constexpr uint64_t kSp7AfHillToleranceNumerator = 995;
++	static constexpr uint64_t kSp7AfHillToleranceDenominator = 1000;
++	static constexpr unsigned int kSp7AfHillMaxReversals = 6;
++	static constexpr int32_t kSp7AfFineStep = 4;
++	static constexpr int32_t kSp7AfFineRadius = 4;
++	static constexpr int32_t kSp7AfMinPosition = 0;
++	static constexpr int32_t kSp7AfMaxPosition = 510;
++
++	/*
++	 * SP7 CDAF V3 calibration:
++	 *
++	 * The software ISP produces focus statistics only periodically.
++	 * After every VCM movement discard one statistics update and
++	 * use the next focus measurement. This trades some noise immunity
++	 * for substantially faster autofocus response.
++	 */
++	static constexpr unsigned int kSp7AfSamplesPerPosition = 1;
++	static constexpr unsigned int kSp7AfProbeSamples = 2;
++	static constexpr unsigned int kSp7AfSettleStats = 1;
++	static constexpr unsigned int kSp7AfLockedSamples = 3;
++	static constexpr unsigned int kSp7AfDropConfirmations = 3;
++
++	/*
++	 * libcamera-inspired CDAF peak detection:
++	 * keep searching through small/noisy decreases and consider the
++	 * focus peak safely passed only after contrast falls below 80%
++	 * of the best score seen during the coarse search.
++	 */
++	static constexpr uint64_t kSp7AfPeakRatioNumerator = 80;
++	static constexpr uint64_t kSp7AfPeakRatioDenominator = 100;
++
++	/*
++	 * Re-focus only after a sustained drop below 90% of the score
++	 * measured when focus was locked. This deliberately favours a
++	 * stable image over constant hunting.
++	 */
++	static constexpr uint64_t kSp7AfRelockNumerator = 90;
++	static constexpr uint64_t kSp7AfRelockDenominator = 100;
++
++	enum class Sp7AfStage {
++		Center,
++		ProbeLow,
++		ProbeHigh,
++		Coarse,
++		Fine,
++		Locked,
++	};
++
++	Sp7AfStage sp7AfStage_;
++	int32_t sp7AfPosition_;
++	int32_t sp7AfBestPosition_;
++	int32_t sp7AfDirection_;
++	int32_t sp7AfFineMin_;
++	int32_t sp7AfFineMax_;
++
++	uint64_t sp7AfCenterScore_;
++	uint64_t sp7AfLowScore_;
++	uint64_t sp7AfHighScore_;
++	uint64_t sp7AfBestScore_;
++	uint64_t sp7AfLockScore_;
++	uint64_t sp7AfScoreSum_;
++
++	unsigned int sp7AfSamples_;
++	unsigned int sp7AfDiscard_;
++	unsigned int sp7AfDropCount_;
++
++	int32_t sp7AfAdaptiveStep_ = kSp7AfCoarseStep;
++	unsigned int sp7AfHillReversals_ = 0;
++
++	int32_t sp7AfAcquisitionCenter_ = 0;
++	int32_t sp7AfInitialDirection_ = 0;
++	uint64_t sp7AfCoarseStartBestScore_ = 0;
++	bool sp7AfCoarseReversed_ = false;
++	bool sp7AfStarted_;
+ 
+ 	/* Local parameter storage */
+ 	struct IPAContext context_;
+@@ -96,6 +220,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 			const SharedFD &fdParams,
+ 			const IPACameraSensorInfo &sensorInfo,
+ 			const ControlInfoMap &sensorControls,
++			const ControlInfoMap &lensControls,
+ 			ControlInfoMap *ipaControls,
+ 			bool *ccmEnabled)
+ {
+@@ -107,6 +232,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 	}
+ 
+ 	context_.sensorInfo = sensorInfo;
++	lensInfoMap_ = lensControls;
+ 
+ 	/* Load the tuning data file */
+ 	File file(settings.configurationFile);
+@@ -202,6 +328,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ {
+ 	sensorInfoMap_ = configInfo.sensorControls;
++	lensInfoMap_ = configInfo.lensControls;
+ 
+ 	const ControlInfo &exposureInfo = sensorInfoMap_.find(V4L2_CID_EXPOSURE)->second;
+ 	const ControlInfo &gainInfo = sensorInfoMap_.find(V4L2_CID_ANALOGUE_GAIN)->second;
+@@ -267,6 +394,33 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ 
+ int IPASoftSimple::start()
+ {
++	sp7AfStage_ = Sp7AfStage::Center;
++	sp7AfPosition_ = kSp7AfInitialPosition;
++	sp7AfBestPosition_ = kSp7AfInitialPosition;
++	sp7AfDirection_ = 0;
++	sp7AfFineMin_ = kSp7AfInitialPosition;
++	sp7AfFineMax_ = kSp7AfInitialPosition;
++
++	sp7AfCenterScore_ = 0;
++	sp7AfLowScore_ = 0;
++	sp7AfHighScore_ = 0;
++	sp7AfBestScore_ = 0;
++	sp7AfLockScore_ = 0;
++	sp7AfScoreSum_ = 0;
++
++	sp7AfSamples_ = 0;
++	sp7AfDiscard_ = 1;
++	sp7AfDropCount_ = 0;
++	sp7AfStarted_ = false;
++
++	LOG(IPASoft, Info)
++		<< "SP7 CONT AF: initialized position="
++		<< kSp7AfInitialPosition
++		<< " coarseStep=" << kSp7AfCoarseStep
++		<< " fineStep=" << kSp7AfFineStep
++		<< " range=" << kSp7AfMinPosition
++		<< "-" << kSp7AfMaxPosition;
++
+ 	return 0;
+ }
+ 
+@@ -307,6 +461,12 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 	frameContext.sensor.gain = camHelper_ ? camHelper_->gain(again) : again;
+ 
+ 	ControlList metadata(controls::controls);
++
++	if (stats_->valid)
++		LOG(IPASoft, Info)
++			<< "SP7 AF TEST: frame=" << frame
++			<< " focusScore=" << stats_->focusScore;
++
+ 	for (const auto &algo : algorithms())
+ 		algo->process(context_, frame, frameContext, stats_, metadata);
+ 	metadataReady.emit(frame, metadata);
+@@ -320,12 +480,572 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 
+ 	ControlList ctrls(sensorInfoMap_);
+ 
+-	auto &againNew = frameContext.sensor.gain;
+-	ctrls.set(V4L2_CID_EXPOSURE, frameContext.sensor.exposure);
+-	ctrls.set(V4L2_CID_ANALOGUE_GAIN,
+-		  static_cast<int32_t>(camHelper_ ? camHelper_->gainCode(againNew) : againNew));
++
++	/*
++	 * SP7 autofocus experiment.
++	 *
++	 * Keep exposure and analogue gain fixed while evaluating the
++	 * focus metric. Otherwise AGC changes can alter the gradient
++	 * score even when the lens position is unchanged.
++	 */
++	constexpr int32_t sp7AfExposure = 500;
++	constexpr int32_t sp7AfGainCode = 128;
++
++	ctrls.set(V4L2_CID_EXPOSURE, sp7AfExposure);
++	ctrls.set(V4L2_CID_ANALOGUE_GAIN, sp7AfGainCode);
++
++	LOG(IPASoft, Info)
++		<< "SP7 AF FIXED EXP: frame=" << frame
++		<< " sensorExposure=" << sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>()
++		<< " sensorGainCode=" << sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>()
++		<< " nextExposure=" << sp7AfExposure
++		<< " nextGainCode=" << sp7AfGainCode;
+ 
+ 	setSensorControls.emit(ctrls);
++
++	/*
++	 * SP7 continuous contrast autofocus.
++	 *
++	 * Acquisition:
++	 *   center -> low probe -> high probe -> coarse directional search
++	 *
++	 * Refinement:
++	 *   scan a small interval around the best coarse position
++	 *
++	 * Locked:
++	 *   keep the lens stationary and monitor the focus metric. Only a
++	 *   sustained drop triggers a new acquisition from the current
++	 *   position.
++	 */
++	if (stats_->valid) {
++		ControlList lensCtrls(lensInfoMap_);
++
++		auto clampPosition = [&](int32_t position) {
++			if (position < kSp7AfMinPosition)
++				return kSp7AfMinPosition;
++			if (position > kSp7AfMaxPosition)
++				return kSp7AfMaxPosition;
++			return position;
++		};
++
++		auto moveLens = [&](int32_t position) {
++			position = clampPosition(position);
++
++			sp7AfPosition_ = position;
++			sp7AfScoreSum_ = 0;
++			sp7AfSamples_ = 0;
++			sp7AfDiscard_ = kSp7AfSettleStats;
++
++			LOG(IPASoft, Info)
++				<< "SP7 CDAF V3 CAL: move position="
++				<< sp7AfPosition_;
++
++			lensCtrls.set(V4L2_CID_FOCUS_ABSOLUTE,
++				      sp7AfPosition_);
++			setLensControls.emit(lensCtrls);
++		};
++
++		auto lockFocus = [&]() {
++			sp7AfStage_ = Sp7AfStage::Locked;
++			sp7AfPosition_ = sp7AfBestPosition_;
++			sp7AfLockScore_ = sp7AfBestScore_;
++			sp7AfScoreSum_ = 0;
++			sp7AfSamples_ = 0;
++			sp7AfDiscard_ = 1;
++			sp7AfDropCount_ = 0;
++
++			LOG(IPASoft, Info)
++				<< "SP7 CONT AF: LOCK position="
++				<< sp7AfBestPosition_
++				<< " score=" << sp7AfBestScore_;
++
++			lensCtrls.set(V4L2_CID_FOCUS_ABSOLUTE,
++				      sp7AfBestPosition_);
++			setLensControls.emit(lensCtrls);
++		};
++
++		auto beginAcquisition = [&](int32_t center) {
++
++			sp7AfAdaptiveStep_ = kSp7AfCoarseStep;
++			sp7AfHillReversals_ = 0;
++
++			sp7AfAcquisitionCenter_ = clampPosition(center);
++			sp7AfInitialDirection_ = 0;
++			sp7AfCoarseStartBestScore_ = 0;
++			sp7AfCoarseReversed_ = false;
++			center = clampPosition(center);
++
++			sp7AfStage_ = Sp7AfStage::Center;
++			sp7AfPosition_ = center;
++			sp7AfBestPosition_ = center;
++			sp7AfDirection_ = 0;
++			sp7AfCenterScore_ = 0;
++			sp7AfLowScore_ = 0;
++			sp7AfHighScore_ = 0;
++			sp7AfBestScore_ = 0;
++			sp7AfScoreSum_ = 0;
++			sp7AfSamples_ = 0;
++			sp7AfDropCount_ = 0;
++
++			LOG(IPASoft, Info)
++				<< "SP7 CONT AF: acquire center="
++				<< center;
++
++			moveLens(center);
++		};
++
++		auto beginFine = [&]() {
++			sp7AfStage_ = Sp7AfStage::Fine;
++
++			sp7AfFineMin_ =
++				clampPosition(sp7AfBestPosition_ -
++					      kSp7AfFineRadius);
++			sp7AfFineMax_ =
++				clampPosition(sp7AfBestPosition_ +
++					      kSp7AfFineRadius);
++
++			/*
++			 * Keep the coarse winner as a valid candidate while
++			 * scanning the surrounding fine interval.
++			 */
++			LOG(IPASoft, Info)
++				<< "SP7 CONT AF: fine range="
++				<< sp7AfFineMin_ << "-"
++				<< sp7AfFineMax_
++				<< " coarseBest="
++				<< sp7AfBestPosition_
++				<< " score=" << sp7AfBestScore_;
++
++			moveLens(sp7AfFineMin_);
++		};
++
++		if (!sp7AfStarted_) {
++			sp7AfStarted_ = true;
++
++			LOG(IPASoft, Info)
++				<< "SP7 FAST CDAF: initial acquisition position="
++				<< kSp7AfInitialPosition;
++
++			beginAcquisition(kSp7AfInitialPosition);
++			return;
++		} else if (sp7AfDiscard_) {
++			--sp7AfDiscard_;
++
++			LOG(IPASoft, Info)
++				<< "SP7 CONT AF: discard position="
++				<< sp7AfPosition_
++				<< " score=" << stats_->focusScore;
++
++		} else if (sp7AfStage_ == Sp7AfStage::Locked) {
++			sp7AfScoreSum_ += stats_->focusScore;
++			++sp7AfSamples_;
++
++			if (sp7AfSamples_ == kSp7AfLockedSamples) {
++				const uint64_t average =
++					sp7AfScoreSum_ / kSp7AfLockedSamples;
++
++				const bool dropped =
++					average * kSp7AfRelockDenominator <
++					sp7AfLockScore_ * kSp7AfRelockNumerator;
++
++				LOG(IPASoft, Info)
++					<< "SP7 CONT AF: monitor position="
++					<< sp7AfPosition_
++					<< " average=" << average
++					<< " lock=" << sp7AfLockScore_
++					<< " dropCount=" << sp7AfDropCount_;
++
++				if (dropped)
++					++sp7AfDropCount_;
++				else
++					sp7AfDropCount_ = 0;
++
++				sp7AfScoreSum_ = 0;
++				sp7AfSamples_ = 0;
++
++				if (sp7AfDropCount_ >=
++				    kSp7AfDropConfirmations) {
++					LOG(IPASoft, Info)
++						<< "SP7 CONT AF: REFOCUS from position="
++						<< sp7AfPosition_
++						<< " monitorScore=" << average
++						<< " lockScore=" << sp7AfLockScore_;
++
++					beginAcquisition(sp7AfPosition_);
++				}
++			}
++
++		} else {
++			const unsigned int samplesNeeded =
++				(sp7AfStage_ == Sp7AfStage::Center ||
++				 sp7AfStage_ == Sp7AfStage::ProbeLow ||
++				 sp7AfStage_ == Sp7AfStage::ProbeHigh)
++					? kSp7AfProbeSamples
++					: kSp7AfSamplesPerPosition;
++
++			sp7AfScoreSum_ += stats_->focusScore;
++			++sp7AfSamples_;
++
++			LOG(IPASoft, Info)
++				<< "SP7 CONT AF: sample position="
++				<< sp7AfPosition_
++				<< " sample=" << sp7AfSamples_
++				<< "/" << samplesNeeded
++				<< " score=" << stats_->focusScore;
++
++			if (sp7AfSamples_ == samplesNeeded) {
++				const uint64_t average =
++					sp7AfScoreSum_ / samplesNeeded;
++
++				LOG(IPASoft, Info)
++					<< "SP7 CONT AF: result position="
++					<< sp7AfPosition_
++					<< " average=" << average;
++
++				switch (sp7AfStage_) {
++				case Sp7AfStage::Center: {
++					sp7AfCenterScore_ = average;
++					sp7AfBestScore_ = average;
++					sp7AfBestPosition_ =
++						sp7AfPosition_;
++
++					const int32_t low =
++						clampPosition(
++							sp7AfPosition_ -
++							kSp7AfProbeStep);
++
++					if (low == sp7AfPosition_) {
++						sp7AfLowScore_ =
++							sp7AfCenterScore_;
++						sp7AfStage_ =
++							Sp7AfStage::ProbeHigh;
++						moveLens(clampPosition(
++							sp7AfPosition_ +
++							kSp7AfProbeStep));
++					} else {
++						sp7AfStage_ =
++							Sp7AfStage::ProbeLow;
++						moveLens(low);
++					}
++					break;
++				}
++
++				case Sp7AfStage::ProbeLow: {
++					sp7AfLowScore_ = average;
++					if (average > sp7AfBestScore_) {
++						sp7AfBestScore_ = average;
++						sp7AfBestPosition_ =
++							sp7AfPosition_;
++					}
++
++					sp7AfStage_ =
++						Sp7AfStage::ProbeHigh;
++
++					const int32_t high =
++						clampPosition(
++							sp7AfPosition_ +
++							kSp7AfProbeStep * 2);
++
++					moveLens(high);
++					break;
++				}
++
++				case Sp7AfStage::ProbeHigh: {
++					sp7AfHighScore_ = average;
++					if (average > sp7AfBestScore_) {
++						sp7AfBestScore_ = average;
++						sp7AfBestPosition_ =
++							sp7AfPosition_;
++					}
++
++					LOG(IPASoft, Info)
++						<< "SP7 CONT AF: probes center="
++						<< sp7AfCenterScore_
++						<< " low=" << sp7AfLowScore_
++						<< " high=" << sp7AfHighScore_;
++
++					const uint64_t sideBest =
++						sp7AfLowScore_ > sp7AfHighScore_
++							? sp7AfLowScore_
++							: sp7AfHighScore_;
++
++					const bool centerBest =
++						sp7AfCenterScore_ >= sp7AfLowScore_ &&
++						sp7AfCenterScore_ >= sp7AfHighScore_;
++
++					const bool centerClearlyBest =
++						centerBest &&
++						sp7AfCenterScore_ *
++							kSp7AfCenterPeakDenominator >=
++						sideBest *
++							kSp7AfCenterPeakNumerator;
++
++					if (centerClearlyBest) {
++						LOG(IPASoft, Info)
++							<< "SP7 CONT AF: clear center peak";
++						beginFine();
++						break;
++					}
++
++					if (centerBest) {
++						/*
++						 * A nearly flat curve around the centre is
++						 * typical for distant subjects. Do not trust
++						 * tiny score differences caused by noise;
++						 * continue towards the far-focus end.
++						 */
++						sp7AfDirection_ =
++							sp7AfLowScore_ >
++									sp7AfHighScore_
++								? -1 : 1;
++
++						LOG(IPASoft, Info)
++							<< "SP7 CONT AF: flat center peak, "
++							   "following better probe direction="
++							<< sp7AfDirection_;
++					} else {
++						sp7AfDirection_ =
++							sp7AfLowScore_ >
++									sp7AfHighScore_
++								? -1 : 1;
++					}
++					sp7AfStage_ =
++						Sp7AfStage::Coarse;
++
++					sp7AfInitialDirection_ = sp7AfDirection_;
++					sp7AfCoarseStartBestScore_ =
++						sp7AfBestScore_;
++					sp7AfCoarseReversed_ = false;
++
++					const int32_t next =
++						clampPosition(
++							sp7AfBestPosition_ +
++							sp7AfDirection_ *
++							kSp7AfCoarseStep);
++
++					if (next == sp7AfBestPosition_)
++						beginFine();
++					else
++						moveLens(next);
++
++					break;
++				}
++
++				case Sp7AfStage::Coarse: {
++					/*
++					 * Remember every new global maximum. The lens
++					 * keeps travelling in the current direction as
++					 * long as contrast remains close to that peak.
++					 */
++					if (average > sp7AfBestScore_) {
++						sp7AfBestScore_ = average;
++						sp7AfBestPosition_ =
++							sp7AfPosition_;
++
++						LOG(IPASoft, Info)
++							<< "SP7 CONT AF: hill best position="
++							<< sp7AfBestPosition_
++							<< " score="
++							<< sp7AfBestScore_
++							<< " step="
++							<< sp7AfAdaptiveStep_
++							<< " direction="
++							<< sp7AfDirection_;
++					}
++
++					/*
++					 * Do not react to tiny fluctuations. Only a
++					 * drop of more than 0.5% relative to the best
++					 * score counts as moving down the hill.
++					 */
++					const bool clearlyWorse =
++						sp7AfBestScore_ &&
++						average *
++								kSp7AfHillToleranceDenominator <
++							sp7AfBestScore_ *
++								kSp7AfHillToleranceNumerator;
++
++					LOG(IPASoft, Info)
++						<< "SP7 CONT AF: hill point position="
++						<< sp7AfPosition_
++						<< " score=" << average
++						<< " bestPosition="
++						<< sp7AfBestPosition_
++						<< " bestScore="
++						<< sp7AfBestScore_
++						<< " step="
++						<< sp7AfAdaptiveStep_
++						<< " direction="
++						<< sp7AfDirection_
++						<< " reversals="
++						<< sp7AfHillReversals_
++						<< " worse="
++						<< clearlyWorse;
++
++					if (clearlyWorse) {
++						/*
++						 * We stepped past the local maximum.
++						 *
++						 * At minimum step size the useful peak has
++						 * been bracketed tightly enough. Finish with
++						 * the small three-point Fine scan.
++						 */
++						if (sp7AfAdaptiveStep_ <=
++									kSp7AfHillMinStep ||
++						    sp7AfHillReversals_ >=
++									kSp7AfHillMaxReversals) {
++							LOG(IPASoft, Info)
++								<< "SP7 CONT AF: hill converged"
++								<< " bestPosition="
++								<< sp7AfBestPosition_
++								<< " score="
++								<< sp7AfBestScore_;
++
++							beginFine();
++							break;
++						}
++
++						/*
++						 * Reverse direction and halve the distance.
++						 *
++						 * Rounded division gives:
++						 * 30 -> 15 -> 8 -> 4
++						 */
++						sp7AfDirection_ =
++							-sp7AfDirection_;
++
++						sp7AfAdaptiveStep_ =
++							(sp7AfAdaptiveStep_ + 1) / 2;
++
++						if (sp7AfAdaptiveStep_ <
++						    kSp7AfHillMinStep)
++							sp7AfAdaptiveStep_ =
++								kSp7AfHillMinStep;
++
++						++sp7AfHillReversals_;
++
++						const int32_t next =
++							clampPosition(
++								sp7AfBestPosition_ +
++								sp7AfDirection_ *
++									sp7AfAdaptiveStep_);
++
++						LOG(IPASoft, Info)
++							<< "SP7 CONT AF: hill reverse"
++							<< " direction="
++							<< sp7AfDirection_
++							<< " step="
++							<< sp7AfAdaptiveStep_
++							<< " next="
++							<< next
++							<< " bestPosition="
++							<< sp7AfBestPosition_;
++
++						if (next == sp7AfBestPosition_)
++							beginFine();
++						else
++							moveLens(next);
++
++						break;
++					}
++
++					/*
++					 * Still climbing: keep travelling in the same
++					 * direction with the current step size.
++					 */
++					int32_t next =
++						clampPosition(
++							sp7AfPosition_ +
++							sp7AfDirection_ *
++								sp7AfAdaptiveStep_);
++
++					if (next == sp7AfPosition_) {
++						/*
++						 * Optical range boundary behaves just like
++						 * walking downhill: reverse and halve.
++						 */
++						if (sp7AfAdaptiveStep_ <=
++									kSp7AfHillMinStep ||
++						    sp7AfHillReversals_ >=
++									kSp7AfHillMaxReversals) {
++							LOG(IPASoft, Info)
++								<< "SP7 CONT AF: hill boundary converged";
++							beginFine();
++							break;
++						}
++
++						sp7AfDirection_ =
++							-sp7AfDirection_;
++
++						sp7AfAdaptiveStep_ =
++							(sp7AfAdaptiveStep_ + 1) / 2;
++
++						if (sp7AfAdaptiveStep_ <
++						    kSp7AfHillMinStep)
++							sp7AfAdaptiveStep_ =
++								kSp7AfHillMinStep;
++
++						++sp7AfHillReversals_;
++
++						next =
++							clampPosition(
++								sp7AfBestPosition_ +
++								sp7AfDirection_ *
++									sp7AfAdaptiveStep_);
++
++						LOG(IPASoft, Info)
++							<< "SP7 CONT AF: hill boundary reverse"
++							<< " direction="
++							<< sp7AfDirection_
++							<< " step="
++							<< sp7AfAdaptiveStep_
++							<< " next="
++							<< next;
++					}
++
++					if (next == sp7AfPosition_ ||
++					    (next == sp7AfBestPosition_ &&
++					     sp7AfAdaptiveStep_ <=
++						     kSp7AfHillMinStep))
++						beginFine();
++					else
++						moveLens(next);
++
++					break;
++				}
++
++case Sp7AfStage::Fine: {
++					if (average > sp7AfBestScore_) {
++						sp7AfBestScore_ = average;
++						sp7AfBestPosition_ =
++							sp7AfPosition_;
++
++						LOG(IPASoft, Info)
++							<< "SP7 CONT AF: fine best position="
++							<< sp7AfBestPosition_
++							<< " score="
++							<< sp7AfBestScore_;
++					}
++
++					const int32_t next =
++						sp7AfPosition_ +
++						kSp7AfFineStep;
++
++					if (next > sp7AfFineMax_ ||
++					    next > kSp7AfMaxPosition)
++						lockFocus();
++					else
++						moveLens(next);
++
++					break;
++				}
++
++				case Sp7AfStage::Locked:
++					break;
++				}
++			}
++		}
++	}
+ }
+ 
+ std::string IPASoftSimple::logPrefix() const
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index e26f438d9..79bb1936a 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -35,6 +35,7 @@
+ #include "libcamera/internal/camera.h"
+ #include "libcamera/internal/camera_manager.h"
+ #include "libcamera/internal/camera_sensor.h"
++#include "libcamera/internal/camera_lens.h"
+ #include "libcamera/internal/camera_sensor_properties.h"
+ #include "libcamera/internal/converter.h"
+ #include "libcamera/internal/delayed_controls.h"
+@@ -372,6 +373,7 @@ private:
+ 	void ispStatsReady(uint32_t frame, uint32_t bufferId);
+ 	void metadataReady(uint32_t frame, const ControlList &metadata);
+ 	void setSensorControls(const ControlList &sensorControls);
++	void setLensControls(const ControlList &lensControls);
+ };
+ 
+ class SimpleCameraConfiguration : public CameraConfiguration
+@@ -597,6 +599,31 @@ int SimpleCameraData::init()
+ 	SimplePipelineHandler *pipe = SimpleCameraData::pipe();
+ 	int ret;
+ 
++	/*
++	 * Surface Pro 7 rear camera: temporary fixed-focus workaround.
++	 *
++	 * The Simple pipeline currently doesn't drive the sensor's focus lens.
++	 * The OV8865 on the Surface Pro 7 uses a DW9719 VCM. A native
++	 * V4L2 focus position of 288 gives a useful general-purpose focus
++	 * position on this device.
++	 *
++	 * This is intentionally a temporary device-specific workaround until
++	 * proper autofocus/lens control is implemented in the Simple pipeline.
++	 */
++	if (sensor_->model() == "ov8865") {
++		CameraLens *lens = sensor_->focusLens();
++
++		if (lens) {
++			ret = lens->setFocusPosition(288);
++			if (ret)
++				LOG(SimplePipeline, Warning)
++					<< "Failed to set OV8865 initial focus position";
++			else
++				LOG(SimplePipeline, Info)
++					<< "Set OV8865 initial focus position to 288";
++		}
++	}
++
+ 	/* Open the converter, if any. */
+ 	std::shared_ptr<MediaDevice> converter = pipe->converter();
+ 	if (converter) {
+@@ -615,7 +642,12 @@ int SimpleCameraData::init()
+ 	 * Instantiate Soft ISP if this is enabled for the given driver and no converter is used.
+ 	 */
+ 	if (!converter_ && pipe->swIspEnabled()) {
+-		swIsp_ = std::make_unique<SoftwareIsp>(pipe, sensor_.get(), &controlInfo_);
++		CameraLens *focusLens = sensor_->focusLens();
++		const ControlInfoMap lensControls =
++			focusLens ? focusLens->controls() : ControlInfoMap{};
++
++		swIsp_ = std::make_unique<SoftwareIsp>(pipe, sensor_.get(),
++						      lensControls, &controlInfo_);
+ 		if (!swIsp_->isValid()) {
+ 			LOG(SimplePipeline, Warning)
+ 				<< "Failed to create software ISP, disabling software debayering";
+@@ -626,6 +658,7 @@ int SimpleCameraData::init()
+ 			swIsp_->ispStatsReady.connect(this, &SimpleCameraData::ispStatsReady);
+ 			swIsp_->metadataReady.connect(this, &SimpleCameraData::metadataReady);
+ 			swIsp_->setSensorControls.connect(this, &SimpleCameraData::setSensorControls);
++			swIsp_->setLensControls.connect(this, &SimpleCameraData::setLensControls);
+ 		}
+ 	}
+ 
+@@ -1058,6 +1091,29 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
+ 	}
+ }
+ 
++void SimpleCameraData::setLensControls(const ControlList &lensControls)
++{
++	CameraLens *focusLens = sensor_->focusLens();
++	if (!focusLens)
++		return;
++
++	if (!lensControls.contains(V4L2_CID_FOCUS_ABSOLUTE))
++		return;
++
++	const ControlValue &focusValue =
++		lensControls.get(V4L2_CID_FOCUS_ABSOLUTE);
++
++	LOG(SimplePipeline, Info)
++		<< "SP7 AF TEST: setting lens position "
++		<< focusValue.get<int32_t>();
++
++	int ret = focusLens->setFocusPosition(focusValue.get<int32_t>());
++	if (ret)
++		LOG(SimplePipeline, Warning)
++			<< "SP7 AF TEST: failed to set lens position: "
++			<< ret;
++}
++
+ /* Retrieve all source pads connected to a sink pad through active routes. */
+ std::vector<const MediaPad *> SimpleCameraData::routedSourcePads(MediaPad *sink)
+ {
+@@ -1240,6 +1296,28 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+ 	if (!pipeConfig_)
+ 		pipeConfig_ = maxPipeConfig;
+ 
++	/*
++	 * Surface Pro 7 OV8865 workaround.
++	 *
++	 * The 1632x1224 and 800x600 sensor modes currently fail to
++	 * produce frames with the IPU4P stack and leave ISYS requiring
++	 * a power cycle. 3264x1836 is known to stream reliably.
++	 *
++	 * Keep the requested output size unchanged, but force the
++	 * sensor/capture configuration to the known-good mode.
++	 */
++	if (data_->sensor_->model() == "ov8865") {
++		for (const SimpleCameraData::Configuration *candidate : *configs) {
++			if (candidate->sensorSize == Size(3264, 1836) &&
++			    candidate->captureSize == Size(3264, 1836)) {
++				pipeConfig_ = candidate;
++				LOG(SimplePipeline, Info)
++					<< "SP7 OV8865: forcing sensor mode 3264x1836";
++				break;
++			}
++		}
++	}
++
+ 	LOG(SimplePipeline, Debug)
+ 		<< "Picked "
+ 		<< V4L2SubdeviceFormat{ pipeConfig_->code, pipeConfig_->sensorSize, {} }
+@@ -1413,6 +1491,16 @@ SimplePipelineHandler::generateConfiguration(Camera *camera, Span<const StreamRo
+ 	std::unique_ptr<CameraConfiguration> config =
+ 		std::make_unique<SimpleCameraConfiguration>(camera, data);
+ 
++	/*
++	 * Surface Pro 7 rear camera orientation workaround.
++	 *
++	 * The OV8865 rear camera image is horizontally mirrored with the
++	 * default orientation. Use the same transformation as cam's
++	 * --orientation=mirror by default.
++	 */
++	if (data->sensor_->model() == "ov8865")
++		config->orientation = Orientation::Rotate0Mirror;
++
+ 	if (roles.empty())
+ 		return config;
+ 
+@@ -1605,6 +1693,11 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+ 	} else {
+ 		ipa::soft::IPAConfigInfo configInfo;
+ 		configInfo.sensorControls = data->sensor_->controls();
++
++		CameraLens *focusLens = data->sensor_->focusLens();
++		if (focusLens)
++			configInfo.lensControls = focusLens->controls();
++
+ 		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo);
+ 	}
+ }
+@@ -1924,6 +2017,21 @@ bool SimplePipelineHandler::matchDevice(std::shared_ptr<MediaDevice> media,
+ 	pipelines.reserve(sensors.size());
+ 
+ 	for (MediaEntity *sensor : sensors) {
++		/*
++		 * Surface Pro 7 rear-only test.
++		 *
++		 * The OV5693 front camera currently fails to produce frames
++		 * with the IPU4P stack and can leave ISYS requiring a power
++		 * cycle. Temporarily exclude it while testing the OV8865 rear
++		 * camera through PipeWire/Snapshot.
++		 */
++		if (sensor->name().find("ov5693") != std::string::npos) {
++			LOG(SimplePipeline, Info)
++				<< "SP7 rear-only test: skipping OV5693 sensor "
++				<< sensor->name();
++			continue;
++		}
++
+ 		std::unique_ptr<SimpleCameraData> data =
+ 			std::make_unique<SimpleCameraData>(this, numStreams, sensor);
+ 		if (!data->isValid()) {
+diff --git a/src/libcamera/pipeline/virtual/data/virtual.yaml b/src/libcamera/pipeline/virtual/data/virtual.yaml
+deleted file mode 100644
+index 20471bb94..000000000
+--- a/src/libcamera/pipeline/virtual/data/virtual.yaml
++++ /dev/null
+@@ -1,36 +0,0 @@
+-# SPDX-License-Identifier: CC0-1.0
+-%YAML 1.1
+----
+-"Virtual0":
+-  supported_formats:
+-  - width: 1920
+-    height: 1080
+-    frame_rates:
+-    - 30
+-    - 60
+-  - width: 1680
+-    height: 1050
+-    frame_rates:
+-    - 70
+-    - 80
+-  test_pattern: "lines"
+-  location: "CameraLocationFront"
+-  model: "Virtual Video Device"
+-"Virtual1":
+-  supported_formats:
+-  - width: 800
+-    height: 600
+-    frame_rates:
+-    - 60
+-  test_pattern: "bars"
+-  location: "CameraLocationBack"
+-  model: "Virtual Video Device1"
+-"Virtual2":
+-  supported_formats:
+-  - width: 400
+-    height: 300
+-  test_pattern: "lines"
+-  location: "CameraLocationFront"
+-  model: "Virtual Video Device2"
+-"Virtual3":
+-  test_pattern: "bars"
+diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
+index c73a16ce0..a09593f31 100644
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -80,6 +80,7 @@ LOG_DEFINE_CATEGORY(SoftwareIsp)
+  * handler
+  */
+ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
++			 const ControlInfoMap &lensControls,
+ 			 ControlInfoMap *ipaControls)
+ 	: ispWorkerThread_("SWIspWorker"),
+ 	  dmaHeap_(DmaBufAllocator::DmaBufAllocatorFlag::CmaHeap |
+@@ -162,6 +163,7 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
+ 			 sharedParams_.fd(),
+ 			 sensorInfo,
+ 			 sensor->controls(),
++			 lensControls,
+ 			 ipaControls,
+ 			 &ccmEnabled_);
+ 	if (ret) {
+@@ -176,6 +178,7 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
+ 					    metadataReady.emit(frame, metadata);
+ 				    });
+ 	ipa_->setSensorControls.connect(this, &SoftwareIsp::setSensorCtrls);
++	ipa_->setLensControls.connect(this, &SoftwareIsp::setLensCtrls);
+ 
+ 	debayer_->moveToThread(&ispWorkerThread_);
+ }
+@@ -441,6 +444,11 @@ void SoftwareIsp::setSensorCtrls(const ControlList &sensorControls)
+ 	setSensorControls.emit(sensorControls);
+ }
+ 
++void SoftwareIsp::setLensCtrls(const ControlList &lensControls)
++{
++	setLensControls.emit(lensControls);
++}
++
+ void SoftwareIsp::statsReady(uint32_t frame, uint32_t bufferId)
+ {
+ 	ispStatsReady.emit(frame, bufferId);
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index 7fb77ce7d..d95e3f6d3 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -229,6 +229,16 @@ void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats)
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+ 
++	/*
++	 * SP7 autofocus experiment:
++	 * Measure horizontal high-frequency detail on the averaged
++	 * green samples. Green is used because it has two samples in
++	 * every Bayer 2x2 block and dominates luminance information.
++	 */
++	uint64_t focusScore = 0;
++	uint16_t previousGreen = 0;
++	bool havePreviousGreen = false;
++
+ 	/* x += 4 sample every other 2x2 block */
+ 	for (unsigned int x = 0; x < window_.width; x += 4) {
+ 		b = src0[x];
+@@ -238,10 +248,20 @@ void SwStatsCpu::statsBGGR10Line0(const uint8_t *src[], SwIspStats &stats)
+ 
+ 		g = (g + g2) / 2;
+ 
++		if (havePreviousGreen)
++			focusScore += g > previousGreen
++				? g - previousGreen
++				: previousGreen - g;
++
++		previousGreen = g;
++		havePreviousGreen = true;
++
+ 		/* divide Y by 4 for 10 -> 8 bpp value */
+ 		SWSTATS_ACCUMULATE_LINE_STATS(4)
+ 	}
+ 
++	stats.focusScore += focusScore;
++
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+@@ -391,6 +411,7 @@ void SwStatsCpu::startFrame(uint32_t frame)
+ 
+ 	for (auto &s : stats_) {
+ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
++		s.focusScore = 0;
+ 		s.yHistogram.fill(0);
+ 	}
+ }
+@@ -408,9 +429,11 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
+ 
+ 	if (valid) {
+ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
++		sharedStats_->focusScore = 0;
+ 		sharedStats_->yHistogram.fill(0);
+ 		for (const auto &s : stats_) {
+ 			sharedStats_->sum_ += s.sum_;
++			sharedStats_->focusScore += s.focusScore;
+ 			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
+ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
+ 		}
