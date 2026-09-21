@@ -1,17 +1,14 @@
 Generated:
-2026-09-21T05:58:07+02:00
+2026-09-21T06:11:16+02:00
 
-NOTE:
-This diagnostic snapshot was generated while booted into the normal
-linux-surface kernel, NOT the experimental IPU4 camera kernel.
-Therefore the current live camera/PipeWire graph is intentionally
-not presented as evidence of the working camera state.
+This diagnostic snapshot was generated while booted into the
+experimental Surface Pro 7 IPU4 camera kernel.
+
+=== Kernel ===
+Linux fedora 6.19.8-sp7-ipu4+ #2 SMP PREEMPT_DYNAMIC Mon Sep 14 21:54:07 CEST 2026 x86_64 GNU/Linux
 
 === Fedora ===
 Fedora release 43 (Forty Three)
-
-=== Current kernel ===
-Linux fedora 6.19.8-3.surface.fc43.x86_64 #1 SMP PREEMPT_DYNAMIC Sat May  9 11:14:36 UTC 2026 x86_64 GNU/Linux
 
 === PipeWire ===
 pipewire
@@ -23,10 +20,7 @@ wireplumber
 Compiled with libwireplumber 0.5.14
 Linked with libwireplumber 0.5.14
 
-=== Snapshot ===
-snapshot-49.1-1.fc43.x86_64
-
-=== Local SPA libcamera plugin ===
+=== SPA libcamera plugin ===
 -rwxr-xr-x. 1 joerg joerg 2,1M 15. Sep 18:32 /home/joerg/Dokumente/surface-camera/pipewire-1.4.11/build-sp7/spa/plugins/libcamera/libspa-libcamera.so
 5452cab0209de4e68430727c1848df4c79987645d07e8703f3873af991ccd792  /home/joerg/Dokumente/surface-camera/pipewire-1.4.11/build-sp7/spa/plugins/libcamera/libspa-libcamera.so
 

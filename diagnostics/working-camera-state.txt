@@ -1,0 +1,53 @@
+Surface Pro 7 camera working-state snapshot
+
+Generated:
+2026-09-21T06:11:15+02:00
+
+Kernel:
+Linux fedora 6.19.8-sp7-ipu4+ #2 SMP PREEMPT_DYNAMIC Mon Sep 14 21:54:07 CEST 2026 x86_64 GNU/Linux
+
+Fedora:
+Fedora release 43 (Forty Three)
+
+PipeWire:
+pipewire
+Compiled with libpipewire 1.4.11
+Linked with libpipewire 1.4.11
+
+WirePlumber:
+wireplumber
+Compiled with libwireplumber 0.5.14
+Linked with libwireplumber 0.5.14
+
+============================================================
+VIDEO GRAPH
+============================================================
+Video
+ ├─ Devices:
+ │  
+ ├─ Sinks:
+ │  
+ ├─ Sources:
+ │  
+ ├─ Filters:
+ │  
+ └─ Streams:
+
+Settings
+
+============================================================
+LIBCAMERA OBJECTS
+============================================================
+        "pipewire.sec.gid": 1000,
+        "pipewire.sec.label": "unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023",
+        "pipewire.sec.pid": 5080,
+        "pipewire.sec.socket": "pipewire-0-manager",
+        "pipewire.sec.uid": 1000,
+        "remote.name": "[pipewire-0-manager,pipewire-0]",
+        "session.services": "[api.alsa, midi, api.libcamera, policy.device.routes, audio, bluetooth.audio, policy.device.profile, video-capture, policy.linking.role-based, policy.linking.standard, api.alsa-seq, policy.default-nodes, bluetooth.midi, api.bluez]",
+        "settings.check-quantum": false,
+        "settings.check-rate": false,
+        "window.x11.display": ":0",
+        "wireplumber.daemon": true,
+        "wireplumber.profile": "main"
+      }

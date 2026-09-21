@@ -1,0 +1,7 @@
+Sep 21 06:09:06 fedora wireplumber[2399]: [0:00:23.924018434] [2399]  INFO Camera camera_manager.cpp:340 libcamera v0.7.2+dirty (2026-09-20T20:04:53CEST)
+Sep 21 06:09:06 fedora wireplumber[2399]: [0:00:23.925617871] [2494]  INFO IPAManager ipa_manager.cpp:148 libcamera is not installed. Adding '/home/joerg/Dokumente/surface-camera/libcamera/build-sp7/src/ipa' to the IPA search path
+Sep 21 06:09:06 fedora wireplumber[2399]: [0:00:23.948479391] [2494] ERROR DmaBufAllocator dma_buf_allocator.cpp:119 Could not open any dma-buf provider
+Sep 21 06:09:06 fedora wireplumber[2399]: [0:00:23.950136950] [2494]  INFO Pipeline pipeline_handler.cpp:657 libcamera is not installed. Loading platform configuration file from '/home/joerg/Dokumente/surface-camera/libcamera/src/libcamera/pipeline/virtual/data/virtual.yaml'
+Sep 21 06:11:11 fedora wireplumber[5080]: [0:02:28.856097635] [5080]  INFO Camera camera_manager.cpp:340 libcamera v0.7.2+dirty (2026-09-20T20:04:53CEST)
+Sep 21 06:11:11 fedora wireplumber[5080]: [0:02:28.857661983] [5115]  INFO IPAManager ipa_manager.cpp:148 libcamera is not installed. Adding '/home/joerg/Dokumente/surface-camera/libcamera/build-sp7/src/ipa' to the IPA search path
+Sep 21 06:11:11 fedora wireplumber[5080]: [0:02:28.862680397] [5115]  INFO Pipeline pipeline_handler.cpp:657 libcamera is not installed. Loading platform configuration file from '/home/joerg/Dokumente/surface-camera/libcamera/src/libcamera/pipeline/virtual/data/virtual.yaml'
