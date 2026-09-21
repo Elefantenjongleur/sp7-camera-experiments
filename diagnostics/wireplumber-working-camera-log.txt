@@ -1,7 +1,29 @@
-Sep 21 06:09:06 fedora wireplumber[2399]: [0:00:23.924018434] [2399]  INFO Camera camera_manager.cpp:340 libcamera v0.7.2+dirty (2026-09-20T20:04:53CEST)
-Sep 21 06:09:06 fedora wireplumber[2399]: [0:00:23.925617871] [2494]  INFO IPAManager ipa_manager.cpp:148 libcamera is not installed. Adding '/home/joerg/Dokumente/surface-camera/libcamera/build-sp7/src/ipa' to the IPA search path
-Sep 21 06:09:06 fedora wireplumber[2399]: [0:00:23.948479391] [2494] ERROR DmaBufAllocator dma_buf_allocator.cpp:119 Could not open any dma-buf provider
-Sep 21 06:09:06 fedora wireplumber[2399]: [0:00:23.950136950] [2494]  INFO Pipeline pipeline_handler.cpp:657 libcamera is not installed. Loading platform configuration file from '/home/joerg/Dokumente/surface-camera/libcamera/src/libcamera/pipeline/virtual/data/virtual.yaml'
 Sep 21 06:11:11 fedora wireplumber[5080]: [0:02:28.856097635] [5080]  INFO Camera camera_manager.cpp:340 libcamera v0.7.2+dirty (2026-09-20T20:04:53CEST)
 Sep 21 06:11:11 fedora wireplumber[5080]: [0:02:28.857661983] [5115]  INFO IPAManager ipa_manager.cpp:148 libcamera is not installed. Adding '/home/joerg/Dokumente/surface-camera/libcamera/build-sp7/src/ipa' to the IPA search path
 Sep 21 06:11:11 fedora wireplumber[5080]: [0:02:28.862680397] [5115]  INFO Pipeline pipeline_handler.cpp:657 libcamera is not installed. Loading platform configuration file from '/home/joerg/Dokumente/surface-camera/libcamera/src/libcamera/pipeline/virtual/data/virtual.yaml'
+Sep 21 06:13:36 fedora wireplumber[5080]: [0:04:54.547292001] [5115] ERROR CameraSensor camera_sensor_legacy.cpp:223 'Intel IPU4 TPG 0': No image format found
+Sep 21 06:13:36 fedora wireplumber[5080]: [0:04:54.547426790] [5115] ERROR CameraSensor camera_sensor.cpp:470 Failed to create sensor for 'Intel IPU4 TPG 0: -22
+Sep 21 06:13:36 fedora wireplumber[5080]: [0:04:54.547478125] [5115] ERROR SimplePipeline simple.cpp:2038 No valid pipeline for sensor 'Intel IPU4 TPG 0', skipping
+Sep 21 06:13:36 fedora wireplumber[5080]: [0:04:54.547850185] [5115] ERROR CameraSensor camera_sensor_legacy.cpp:223 'Intel IPU4 TPG 1': No image format found
+Sep 21 06:13:36 fedora wireplumber[5080]: [0:04:54.547935387] [5115] ERROR CameraSensor camera_sensor.cpp:470 Failed to create sensor for 'Intel IPU4 TPG 1: -22
+Sep 21 06:13:36 fedora wireplumber[5080]: [0:04:54.547979131] [5115] ERROR SimplePipeline simple.cpp:2038 No valid pipeline for sensor 'Intel IPU4 TPG 1', skipping
+Sep 21 06:13:37 fedora wireplumber[5080]: [0:04:55.235424202] [5115]  WARN CameraSensor camera_sensor_legacy.cpp:502 'ov8865 2-0010': No sensor delays found in static properties. Assuming unverified defaults.
+Sep 21 06:13:37 fedora wireplumber[5080]: [0:04:55.420575948] [5115]  INFO IPAProxy ipa_proxy.cpp:73 libcamera is not installed. Loading IPA configuration from '/home/joerg/Dokumente/surface-camera/libcamera/src/ipa/simple/data'
+Sep 21 06:13:37 fedora wireplumber[5080]: [0:04:55.421840015] [5115]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /home/joerg/Dokumente/surface-camera/libcamera/src/ipa/simple/data/ov8865.yaml
+Sep 21 06:13:37 fedora wireplumber[5080]: [0:04:55.430713229] [5115]  INFO Camera camera_manager.cpp:223 Adding camera '\_SB_.PCI0.I2C3.CAMR' for pipeline handler simple
+Sep 21 06:13:38 fedora wireplumber[5080]: [0:04:56.441340972] [5115]  INFO SimplePipeline simple.cpp:1314 SP7 OV8865: forcing sensor mode 3264x1836
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.158287769] [6469]  INFO Camera camera_manager.cpp:340 libcamera v0.7.2+dirty (2026-09-20T20:04:53CEST)
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.159822627] [6483]  INFO IPAManager ipa_manager.cpp:148 libcamera is not installed. Adding '/home/joerg/Dokumente/surface-camera/libcamera/build-sp7/src/ipa' to the IPA search path
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.299508754] [6483] ERROR CameraSensor camera_sensor_legacy.cpp:223 'Intel IPU4 TPG 0': No image format found
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.299698499] [6483] ERROR CameraSensor camera_sensor.cpp:470 Failed to create sensor for 'Intel IPU4 TPG 0: -22
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.299772225] [6483] ERROR SimplePipeline simple.cpp:2038 No valid pipeline for sensor 'Intel IPU4 TPG 0', skipping
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.300272164] [6483] ERROR CameraSensor camera_sensor_legacy.cpp:223 'Intel IPU4 TPG 1': No image format found
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.300370625] [6483] ERROR CameraSensor camera_sensor.cpp:470 Failed to create sensor for 'Intel IPU4 TPG 1: -22
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.300415184] [6483] ERROR SimplePipeline simple.cpp:2038 No valid pipeline for sensor 'Intel IPU4 TPG 1', skipping
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.552660537] [6483]  WARN CameraSensor camera_sensor_legacy.cpp:502 'ov8865 2-0010': No sensor delays found in static properties. Assuming unverified defaults.
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.564133570] [6483]  INFO SimplePipeline simple.cpp:622 Set OV8865 initial focus position to 288
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.580833007] [6483]  INFO IPAProxy ipa_proxy.cpp:73 libcamera is not installed. Loading IPA configuration from '/home/joerg/Dokumente/surface-camera/libcamera/src/ipa/simple/data'
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.580906567] [6483]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /home/joerg/Dokumente/surface-camera/libcamera/src/ipa/simple/data/ov8865.yaml
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.585723720] [6483]  INFO Camera camera_manager.cpp:223 Adding camera '\_SB_.PCI0.I2C3.CAMR' for pipeline handler simple
+Sep 21 06:13:40 fedora wireplumber[6469]: [0:04:58.587030392] [6483]  INFO Pipeline pipeline_handler.cpp:657 libcamera is not installed. Loading platform configuration file from '/home/joerg/Dokumente/surface-camera/libcamera/src/libcamera/pipeline/virtual/data/virtual.yaml'
+Sep 21 06:13:41 fedora wireplumber[6469]: [0:04:59.609368373] [6483]  INFO SimplePipeline simple.cpp:1314 SP7 OV8865: forcing sensor mode 3264x1836

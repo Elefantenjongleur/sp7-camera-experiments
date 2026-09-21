@@ -1,8 +1,8 @@
 Generated:
-2026-09-21T06:11:16+02:00
+2026-09-21T06:13:45+02:00
 
 This diagnostic snapshot was generated while booted into the
-experimental Surface Pro 7 IPU4 camera kernel.
+working experimental Surface Pro 7 IPU4 camera kernel.
 
 === Kernel ===
 Linux fedora 6.19.8-sp7-ipu4+ #2 SMP PREEMPT_DYNAMIC Mon Sep 14 21:54:07 CEST 2026 x86_64 GNU/Linux
@@ -20,9 +20,21 @@ wireplumber
 Compiled with libwireplumber 0.5.14
 Linked with libwireplumber 0.5.14
 
-=== SPA libcamera plugin ===
--rwxr-xr-x. 1 joerg joerg 2,1M 15. Sep 18:32 /home/joerg/Dokumente/surface-camera/pipewire-1.4.11/build-sp7/spa/plugins/libcamera/libspa-libcamera.so
-5452cab0209de4e68430727c1848df4c79987645d07e8703f3873af991ccd792  /home/joerg/Dokumente/surface-camera/pipewire-1.4.11/build-sp7/spa/plugins/libcamera/libspa-libcamera.so
+=== Camera graph ===
+Video
+ ├─ Devices:
+ │      48. ov8865                              [libcamera]
+ │  
+ ├─ Sinks:
+ │  
+ ├─ Sources:
+ │  *   43. Interne hintere Kamera             
+ │  
+ ├─ Filters:
+ │  
+ └─ Streams:
+
+Settings
 
 === IPU4P firmware ===
 -rw-r--r--. 1 root root 3,8M 13. Sep 20:37 /usr/lib/firmware/ipu4p_cpd.bin

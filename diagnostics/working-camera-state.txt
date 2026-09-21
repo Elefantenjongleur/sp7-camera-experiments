@@ -1,7 +1,7 @@
-Surface Pro 7 camera working-state snapshot
+Surface Pro 7 camera WORKING-state snapshot
 
 Generated:
-2026-09-21T06:11:15+02:00
+2026-09-21T06:13:45+02:00
 
 Kernel:
 Linux fedora 6.19.8-sp7-ipu4+ #2 SMP PREEMPT_DYNAMIC Mon Sep 14 21:54:07 CEST 2026 x86_64 GNU/Linux
@@ -24,10 +24,12 @@ VIDEO GRAPH
 ============================================================
 Video
  ├─ Devices:
+ │      48. ov8865                              [libcamera]
  │  
  ├─ Sinks:
  │  
  ├─ Sources:
+ │  *   43. Interne hintere Kamera             
  │  
  ├─ Filters:
  │  
@@ -40,14 +42,107 @@ LIBCAMERA OBJECTS
 ============================================================
         "pipewire.sec.gid": 1000,
         "pipewire.sec.label": "unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023",
-        "pipewire.sec.pid": 5080,
+        "pipewire.sec.pid": 6469,
         "pipewire.sec.socket": "pipewire-0-manager",
         "pipewire.sec.uid": 1000,
         "remote.name": "[pipewire-0-manager,pipewire-0]",
-        "session.services": "[api.alsa, midi, api.libcamera, policy.device.routes, audio, bluetooth.audio, policy.device.profile, video-capture, policy.linking.role-based, policy.linking.standard, api.alsa-seq, policy.default-nodes, bluetooth.midi, api.bluez]",
+        "session.services": "[policy.linking.standard, policy.device.profile, api.alsa, policy.device.routes, policy.linking.role-based, api.libcamera, bluetooth.audio, api.bluez, bluetooth.midi, midi, audio, policy.default-nodes, api.alsa-seq, video-capture]",
         "settings.check-quantum": false,
         "settings.check-rate": false,
         "window.x11.display": ":0",
         "wireplumber.daemon": true,
         "wireplumber.profile": "main"
       }
+--
+      "module.id": 6,
+      "object.serial": 123
+    },
+    "metadata": [
+      { "subject": 0, "key": "default.audio.sink", "type": "Spa:String:JSON", "value": { "name": "alsa_output.pci-0000_00_1f.3.analog-stereo" } },
+      { "subject": 0, "key": "default.audio.source", "type": "Spa:String:JSON", "value": { "name": "alsa_input.pci-0000_00_1f.3.analog-stereo" } },
+      { "subject": 0, "key": "default.video.source", "type": "Spa:String:JSON", "value": { "name": "libcamera_input.__SB_.PCI0.I2C3.CAMR" } }
+    ]
+  },
+  {
+    "id": 54,
+    "type": "PipeWire:Interface:Metadata",
+    "version": 3,
+--
+    "type": "PipeWire:Interface:Device",
+    "version": 3,
+    "permissions": [ "r", "w", "x", "m" ],
+    "info": {
+      "change-mask": [ "props", "params" ],
+      "props": {
+        "api.libcamera.location": "back",
+        "api.libcamera.path": "\\_SB_.PCI0.I2C3.CAMR",
+        "api.libcamera.rotation": 180,
+        "client.id": 39,
+        "device.api": "libcamera",
+        "device.description": "ov8865",
+        "device.devids": "[ 20736 20737 20738 20739 20740 20741 20742 20743 20744 20745 20746 20747 20748 20749 20750 20751 20752 20753 20754 20755 20756 20757 20758 20759 20760 20761 20762 20763 20764 20765 20766 20767 20768 20769 20770 20771 20772 20773 20774 20775 20776 20777 20778 20779 20780 20781 20782 20783 20784 20785 20786 20787 20789 20790 ]",
+        "device.enum.api": "libcamera.manager",
+        "device.name": "libcamera_device.\\_SB_.PCI0.I2C3.CAMR",
+        "device.product.name": "ov8865",
+        "factory.id": 15,
+        "media.class": "Video/Device",
+        "object.id": 48,
+        "object.path": "libcamera:\\_SB_.PCI0.I2C3.CAMR",
+        "object.serial": 143
+      },
+      "params": {
+        "EnumProfile": [
+        ],
+        "Profile": [ ]
+--
+      "change-mask": [ "input-ports", "output-ports", "state", "props", "params" ],
+      "n-input-ports": 0,
+      "n-output-ports": 1,
+      "state": "suspended",
+      "error": null,
+      "props": {
+        "api.libcamera.location": "back",
+        "api.libcamera.path": "\\_SB_.PCI0.I2C3.CAMR",
+        "api.libcamera.rotation": 180,
+        "client.id": 39,
+        "clock.quantum-limit": 8192,
+        "device.api": "libcamera",
+        "device.description": "ov8865",
+        "device.devids": "[ 20736 20737 20738 20739 20740 20741 20742 20743 20744 20745 20746 20747 20748 20749 20750 20751 20752 20753 20754 20755 20756 20757 20758 20759 20760 20761 20762 20763 20764 20765 20766 20767 20768 20769 20770 20771 20772 20773 20774 20775 20776 20777 20778 20779 20780 20781 20782 20783 20784 20785 20786 20787 20789 20790 ]",
+        "device.id": 48,
+        "device.name": "libcamera_device.\\_SB_.PCI0.I2C3.CAMR",
+        "device.product.name": "ov8865",
+        "factory.id": 14,
+        "factory.name": "api.libcamera.source",
+        "media.class": "Video/Source",
+        "media.role": "Camera",
+        "node.description": "Interne hintere Kamera",
+        "node.driver": true,
+        "node.loop.name": "data-loop.0",
+        "node.name": "libcamera_input.__SB_.PCI0.I2C3.CAMR",
+        "node.nick": "ov8865",
+        "node.pause-on-idle": false,
+        "object.id": 43,
+        "object.path": "libcamera:\\_SB_.PCI0.I2C3.CAMR",
+        "object.serial": 152,
+        "priority.session": 750
+      },
+      "params": {
+        "PropInfo": [
+          {
+--
+    "info": {
+      "direction": "output",
+      "change-mask": [ "props", "params" ],
+      "props": {
+        "node.id": 43,
+        "object.id": 57,
+        "object.path": "libcamera:\\_SB_.PCI0.I2C3.CAMR:capture_0",
+        "object.serial": 153,
+        "port.alias": "ov8865:capture_1",
+        "port.direction": "out",
+        "port.group": "stream.0",
+        "port.id": 0,
+        "port.name": "capture_1",
+        "port.physical": true,
+        "port.terminal": true
